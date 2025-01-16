@@ -11,17 +11,28 @@ debug = 1
 # hard:   harwdare fpu, hard abi
 fpu = soft
 
+ARCH ?= riscv
+
 # specify an aarch32 bare-metal eabi toolchain
 # TODO: add riscv support
-CC ?= riscv32-corev-elf-gcc
-CC := arm-none-eabi-gcc
+ifeq ($(ARCH), riscv)
+	CC = riscv32-corev-elf-gcc
+	OBJCOPY = riscv32-corev-elf-objcopy
+	C_OBJECTS = 
+	S_OBJECTS = minimum_riscv_image_def_block.o
+else
+	CC = arm-none-eabi-gcc
+	OBJCOPY = arm-none-eabi-objcopy
+	C_OBJECTS = main.o syscalls.o
+	S_OBJECTS = minimum_arm_image_def_block.o
+endif
 
 # assume default pico-sdk path
 PICO_SDK_PATH ?= ~/pico-sdk
 
 # modify these to add/remove different code/object files
-C_OBJECTS = main.o syscalls.o
-S_OBJECTS = minimum_arm_image_def_block.o
+
+
 ELF = program.elf
 BIN = program.bin
 UF2 = program.uf2
@@ -43,6 +54,32 @@ else
 	FLOATFLAGS = -mfloat-abi=soft
 endif
 
+ifeq ($(ARCH), riscv)
+# cpu target and instruction set
+CFLAGS = -std=gnu11
+# floating point model
+# includes
+CFLAGS += -I. -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Core/Include -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Include
+
+# use newlib nano
+# put functions and data into individual sections
+CFLAGS += -ffunction-sections -fdata-sections
+CFLAGS += -Wall
+CFLAGS += $(DEBUGFLAGS)
+
+# enable c preprocessor in assembly source files
+ASFLAGS += -x assembler-with-cpp
+ASFLAGS += $(DEBUGFLAGS)
+
+# use the linker script
+LDFLAGS += -T"linker.ld"
+# use the system call stubs
+# LDFLAGS += --specs=nosys.specs 
+# remove empty sections only if not for debug
+LDFLAGS += -Wl,--gc-sections
+LDFLAGS += -static
+LDFLAGS += -Wl,--start-group -lc -lm -Wl,--end-group
+else
 # cpu target and instruction set
 CFLAGS = -mcpu=cortex-m33 -mthumb -std=gnu11
 # floating point model
@@ -75,6 +112,7 @@ LDFLAGS += -Wl,--gc-sections
 LDFLAGS += -static
 LDFLAGS += --specs=nano.specs
 LDFLAGS += -Wl,--start-group -lc -lm -Wl,--end-group
+endif
 
 all: clean $(ELF) $(BIN) $(UF2)
 
@@ -91,7 +129,7 @@ $(ELF): $(C_OBJECTS) $(S_OBJECTS) Makefile linker.ld
 	$(CC) -o $@ $(C_OBJECTS) $(S_OBJECTS) $(LDFLAGS)
 
 $(BIN): $(ELF)
-	arm-none-eabi-objcopy -O binary $^ $@
+	$(OBJCOPY) -O binary $^ $@
 
 $(UF2): $(BIN)
 	picotool uf2 convert $^ -t bin $@
