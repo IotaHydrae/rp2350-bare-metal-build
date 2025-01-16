@@ -55,27 +55,19 @@ else
 endif
 
 ifeq ($(ARCH), riscv)
-# cpu target and instruction set
-CFLAGS = -std=gnu11
-# floating point model
-# includes
-CFLAGS += -I. -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Core/Include -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Include
-
-# use newlib nano
-# put functions and data into individual sections
+CFLAGS = -march=rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs -std=gnu11
+CFLAGS += -I. -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Core/Include \
+			  -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Include
 CFLAGS += -ffunction-sections -fdata-sections
-CFLAGS += -Wall
-CFLAGS += $(DEBUGFLAGS)
+CFLAGS += -Os -Wl,--no-warn-rwx-segments
 
-# enable c preprocessor in assembly source files
+ASFLAGS = -march=rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs -std=gnu11
 ASFLAGS += -x assembler-with-cpp
-ASFLAGS += $(DEBUGFLAGS)
+ASFLAGS += -I. -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Core/Include \
+			   -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Include
+ASFLAGS += -Os -Wl,--no-warn-rwx-segments
 
-# use the linker script
 LDFLAGS += -T"linker.ld"
-# use the system call stubs
-# LDFLAGS += --specs=nosys.specs 
-# remove empty sections only if not for debug
 LDFLAGS += -Wl,--gc-sections
 LDFLAGS += -static
 LDFLAGS += -Wl,--start-group -lc -lm -Wl,--end-group
