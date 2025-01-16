@@ -12,12 +12,19 @@ debug = 1
 fpu = soft
 
 # specify an aarch32 bare-metal eabi toolchain
-CC = arm-none-eabi-gcc
+# TODO: add riscv support
+CC ?= riscv32-corev-elf-gcc
+CC := arm-none-eabi-gcc
+
+# assume default pico-sdk path
+PICO_SDK_PATH ?= ~/pico-sdk
 
 # modify these to add/remove different code/object files
 C_OBJECTS = main.o syscalls.o
 S_OBJECTS = minimum_arm_image_def_block.o
 ELF = program.elf
+BIN = program.bin
+UF2 = program.uf2
 
 # sets DEBUGFLAGS based on debug above
 ifeq ($(debug), 1)
@@ -41,7 +48,7 @@ CFLAGS = -mcpu=cortex-m33 -mthumb -std=gnu11
 # floating point model
 CFLAGS += $(FLOATFLAGS)
 # includes
-CFLAGS += -I. -Ipico-sdk/src/rp2_common/cmsis/stub/CMSIS/Core/Include -Ipico-sdk/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Include
+CFLAGS += -I. -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Core/Include -I${PICO_SDK_PATH}/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Include
 
 # use newlib nano
 CFLAGS += --specs=nano.specs
@@ -69,25 +76,31 @@ LDFLAGS += -static
 LDFLAGS += --specs=nano.specs
 LDFLAGS += -Wl,--start-group -lc -lm -Wl,--end-group
 
-all: clean $(ELF)
+all: clean $(ELF) $(BIN) $(UF2)
 
 clean:
-	rm -rf $(ELF) *.o
+	rm -rf $(ELF) $(BIN) $(UF2) *.o
 
-%.o: %.c Makefile | pico-sdk
+%.o: %.c Makefile
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-%.o: %.s Makefile | pico-sdk
+%.o: %.s Makefile
 	$(CC) $(ASFLAGS) -c -o $@ $<
 
 $(ELF): $(C_OBJECTS) $(S_OBJECTS) Makefile linker.ld
 	$(CC) -o $@ $(C_OBJECTS) $(S_OBJECTS) $(LDFLAGS)
 
+$(BIN): $(ELF)
+	arm-none-eabi-objcopy -O binary $^ $@
+
+$(UF2): $(BIN)
+	picotool uf2 convert $^ -t bin $@
+
 flash: clean $(ELF)
 	openocd -f interface/cmsis-dap.cfg -f target/rp2350.cfg -c "adapter speed 5000" -c "program $(ELF) verify reset exit"
 
 debug: clean $(ELF)
-	arm-none-eabi-gdb -ex "target remote localhost:3333" -ex "monitor reset init" -ex "break Reset_Handler" $(ELF)
+	gdb-multiarch -ex "target remote localhost:3333" -ex "monitor reset init" -ex "break Reset_Handler" $(ELF)
 
 openocd-server:
 	openocd -f interface/cmsis-dap.cfg -f target/rp2350.cfg -c "adapter speed 5000"
